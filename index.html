@@ -3,105 +3,105 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SHIFT.AI - 本番用</title>
+    <title>SHIFT.AI - 完成版</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { margin: 0; font-family: sans-serif; background: #f1f5f9; }
+        * { box-sizing: border-box; }
+    </style>
 </head>
-<body style="margin:0; background: #f1f5f9;">
+<body>
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
 
-        // --- 共通ユーティリティ ---
+        // ─── ここから「クソ長いコード」の心臓部 ───
         const pad2 = (n) => String(n).padStart(2, "0");
         const dateKey = (y, m, d) => `${y}-${pad2(m)}-${pad2(d)}`;
+        const toMin = (t) => { if (!t) return 0; const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+        const toHStr = (m) => (m / 60).toFixed(1);
+        const calcWork = (s) => { if (!s) return 0; return Math.max(0, toMin(s.end) - toMin(s.start) - (Number(s.break) || 0)); };
+        const calcPay = (workMin, wage) => Math.floor((workMin / 60) * (wage || 0));
 
         function App() {
             const [user, setUser] = useState(null);
             const [staffAccounts, setStaffAccounts] = useState(() => {
-                const saved = localStorage.getItem("shift_staff_v3");
+                const saved = localStorage.getItem("staff_data_final");
                 return saved ? JSON.parse(saved) : [
-                    { id: 1, loginId: "admin", password: "password123", name: "店長", role: "admin", color: "#1e293b", hourlyWage: 2000 },
-                    { id: 2, loginId: "yamada", password: "password123", name: "山田 太郎", role: "staff", color: "#2563eb", hourlyWage: 1200 }
+                    { id:1,  loginId:"admin",  password:"password123", name:"店長", role:"admin", color:"#1e293b", hourlyWage:2000 },
+                    { id:2,  loginId:"yamada",  password:"password123", name:"山田 太郎", role:"staff", color:"#2563eb", hourlyWage:1200 }
                 ];
             });
 
             useEffect(() => {
-                localStorage.setItem("shift_staff_v3", JSON.stringify(staffAccounts));
+                localStorage.setItem("staff_data_final", JSON.stringify(staffAccounts));
             }, [staffAccounts]);
 
-            if (!user) return <LoginScreen staffAccounts={staffAccounts} onLogin={setUser} />;
-            return <ShiftManager user={user} setUser={setUser} staffAccounts={staffAccounts} setStaffAccounts={setStaffAccounts} onLogout={() => setUser(null)} />;
+            if (!user) return <LoginScreen staffAccounts={staffAccounts} onLogin={setUser}/>;
+            return <ShiftManager user={user} setUser={setUser} staffAccounts={staffAccounts} setStaffAccounts={setStaffAccounts} onLogout={()=>setUser(null)}/>;
         }
 
         function ShiftManager({ user, setUser, staffAccounts, setStaffAccounts, onLogout }) {
             const [view, setView] = useState("shift");
             const [monthShifts, setMonthShifts] = useState(() => {
-                const saved = localStorage.getItem("shifts_data_v3");
-                return saved ? JSON.parse(saved) : {};
+                const s = localStorage.getItem("shifts_json_final");
+                return s ? JSON.parse(s) : {};
             });
 
             useEffect(() => {
-                localStorage.setItem("shifts_data_v3", JSON.stringify(monthShifts));
+                localStorage.setItem("shifts_json_final", JSON.stringify(monthShifts));
             }, [monthShifts]);
 
             const isAdmin = user.role === "admin";
 
-            // シフト入力の処理
-            const handleEditShift = (sid, day) => {
-                if (!isAdmin) return;
-                const key = dateKey(2026, 4, day); // 2026年4月で固定
-                const current = (monthShifts[key] || {})[sid];
-                
-                const start = prompt("開始時間 (例 09:00)", current?.start || "09:00");
-                if (start === null) return;
-                const end = prompt("終了時間 (例 18:00)", current?.end || "18:00");
-                if (end === null) return;
-
-                setMonthShifts(prev => ({
-                    ...prev,
-                    [key]: { ...(prev[key] || {}), [sid]: { start, end } }
-                }));
-            };
+            const stats = useMemo(() => {
+                const res = {};
+                staffAccounts.forEach(s => {
+                    let totalMin = 0;
+                    for(let d=1; d<=31; d++) {
+                        const sh = (monthShifts[dateKey(2026,4,d)] || {})[s.id];
+                        if(sh) totalMin += calcWork(sh);
+                    }
+                    res[s.id] = { totalMin, pay: calcPay(totalMin, s.hourlyWage) };
+                });
+                return res;
+            }, [monthShifts, staffAccounts]);
 
             return (
-                <div style={{ fontFamily: "sans-serif" }}>
-                    <div style={{ background: "#fff", padding: "10px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #ddd" }}>
-                        <div style={{ fontWeight: 800, color: "#2563eb", fontSize: 20 }}>SHIFT.AI</div>
-                        <div>
-                            <span style={{marginRight: 15, fontSize: 14}}>{user.name}さん</span>
-                            <button onClick={onLogout} style={{padding: "5px 10px", borderRadius: 5, border: "1px solid #ddd", cursor: "pointer"}}>ログアウト</button>
-                        </div>
-                    </div>
-
-                    <div style={{ background: "#fff", display: "flex", borderBottom: "1px solid #ddd" }}>
-                        <button onClick={() => setView("shift")} style={{ flex: 1, padding: "15px", border: "none", background: "none", borderBottom: view === "shift" ? "3px solid #2563eb" : "none", fontWeight: 600 }}>シフト表</button>
-                        <button onClick={() => setView("config")} style={{ flex: 1, padding: "15px", border: "none", background: "none", borderBottom: view === "config" ? "3px solid #2563eb" : "none", fontWeight: 600 }}>設定</button>
-                    </div>
-
-                    <div style={{ padding: "15px" }}>
-                        {view === "shift" ? (
-                            <div style={{ background: "#fff", borderRadius: 10, overflow: "auto", boxShadow: "0 2px 5px rgba(0,0,0,0.1)" }}>
-                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                                    <thead>
-                                        <tr style={{ background: "#f8fafc" }}>
-                                            <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #eee", position: "sticky", left: 0, background: "#f8fafc" }}>名前</th>
-                                            {[...Array(30)].map((_, i) => <th key={i} style={{ padding: 5, borderBottom: "1px solid #eee", minWidth: 35 }}>{i + 1}</th>)}
-                                        </tr>
-                                    </thead>
+                <div>
+                    <header style={{ background: "#fff", padding: "10px 20px", display: "flex", justifyContent: "space-between", borderBottom: "1px solid #ddd" }}>
+                        <div style={{ fontWeight: 800, color: "#2563eb" }}>SHIFT.AI</div>
+                        <div style={{fontSize: "14px"}}>{user.name}さん <button onClick={onLogout}>終了</button></div>
+                    </header>
+                    <nav style={{ background: "#fff", display: "flex", borderBottom: "1px solid #ddd" }}>
+                        <button onClick={()=>setView("shift")} style={{ flex:1, padding: "15px", border: "none", background: "none", borderBottom: view==="shift"?"2px solid #2563eb":"none" }}>シフト表</button>
+                        <button onClick={()=>setView("stats")} style={{ flex:1, padding: "15px", border: "none", background: "none", borderBottom: view==="stats"?"2px solid #2563eb":"none" }}>統計</button>
+                        <button onClick={()=>setView("config")} style={{ flex:1, padding: "15px", border: "none", background: "none", borderBottom: view==="config"?"2px solid #2563eb":"none" }}>設定</button>
+                    </nav>
+                    <main style={{ padding: "15px" }}>
+                        {view === "shift" && (
+                            <div style={{ background: "#fff", overflow: "auto" }}>
+                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
+                                    <thead><tr style={{ background: "#eee" }}><th style={{position:"sticky", left:0, background:"#eee", padding:"10px"}}>名前</th>
+                                    {[...Array(30)].map((_, i) => <th key={i}>{i+1}</th>)}</tr></thead>
                                     <tbody>
                                         {staffAccounts.map(s => (
-                                            <tr key={s.id}>
-                                                <td style={{ padding: 10, borderBottom: "1px solid #eee", fontWeight: 700, position: "sticky", left: 0, background: "#fff" }}>{s.name}</td>
+                                            <tr key={s.id} style={{ borderBottom: "1px solid #eee" }}>
+                                                <td style={{position:"sticky", left:0, background:"#fff", padding:"10px", fontWeight:"bold"}}>{s.name}</td>
                                                 {[...Array(30)].map((_, i) => {
-                                                    const sh = (monthShifts[dateKey(2026, 4, i + 1)] || {})[s.id];
+                                                    const key = dateKey(2026, 4, i+1);
+                                                    const sh = (monthShifts[key] || {})[s.id];
                                                     return (
-                                                        <td key={i} onClick={() => handleEditShift(s.id, i + 1)} style={{ padding: 2, borderBottom: "1px solid #eee", textAlign: "center", cursor: isAdmin ? "pointer" : "default" }}>
-                                                            {sh ? (
-                                                                <div style={{ background: "#dbeafe", color: "#1e40af", borderRadius: 3, fontSize: 9, padding: "2px 0" }}>{sh.start}<br/>{sh.end}</div>
-                                                            ) : <span style={{color: "#ccc"}}>-</span>}
+                                                        <td key={i} onClick={() => {
+                                                            if(!isAdmin) return;
+                                                            const start = prompt("開始", sh?.start || "09:00");
+                                                            const end = prompt("終了", sh?.end || "18:00");
+                                                            if(start && end) setMonthShifts(prev => ({ ...prev, [key]: { ...(prev[key]||{}), [s.id]: { start, end, break: 60 } } }));
+                                                        }} style={{ textAlign: "center", minWidth: "35px", height: "40px", cursor: isAdmin?"pointer":"default" }}>
+                                                            {sh ? <div style={{background:s.color, color:"#fff", fontSize:"8px", borderRadius:"2px"}}>{sh.start}</div> : "-"}
                                                         </td>
                                                     );
                                                 })}
@@ -109,25 +109,34 @@
                                         ))}
                                     </tbody>
                                 </table>
-                                {isAdmin && <p style={{fontSize: 10, padding: 10, color: "#666"}}>※セルをタップしてシフトを入力/変更できます</p>}
-                            </div>
-                        ) : (
-                            <div style={{maxWidth: 400, margin: "auto"}}>
-                                <div style={{background: "#fff", padding: 20, borderRadius: 10, marginBottom: 20}}>
-                                    <h3>マイ設定</h3>
-                                    <label style={{fontSize: 12, color: "#666"}}>名前</label>
-                                    <input style={{width: "100%", padding: 10, marginBottom: 15, boxSizing: "border-box"}} value={user.name} readOnly />
-                                    <p style={{fontSize: 11, color: "#888"}}>※名前やパスワードの変更機能は、次のアップデートでより安全に統合されます。</p>
-                                </div>
-                                {isAdmin && (
-                                    <div style={{background: "#fff", padding: 20, borderRadius: 10}}>
-                                        <h3>スタッフ一覧</h3>
-                                        {staffAccounts.map(s => <div key={s.id} style={{padding: "5px 0", borderBottom: "1px solid #eee"}}>{s.name} ({s.role})</div>)}
-                                    </div>
-                                )}
                             </div>
                         )}
-                    </div>
+                        {view === "stats" && (
+                            <div>
+                                {staffAccounts.map(s => (
+                                    <div key={s.id} style={{ background: "#fff", padding: "15px", marginBottom: "10px", borderRadius: "8px", display: "flex", justifyContent: "space-between" }}>
+                                        <span>{s.name}</span>
+                                        <span style={{fontWeight:"bold", color:"#10b981"}}>¥{stats[s.id].pay.toLocaleString()}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {view === "config" && (
+                            <div style={{ background: "#fff", padding: "20px", borderRadius: "8px" }}>
+                                <h3>プロフィール設定</h3>
+                                名前: <input style={{width:"100%", padding:"10px", marginBottom:"10px"}} value={user.name} onChange={e => {
+                                    const n = e.target.value;
+                                    setStaffAccounts(prev => prev.map(s => s.id === user.id ? {...s, name: n} : s));
+                                    setUser(prev => ({...prev, name: n}));
+                                }} />
+                                パスワード: <input type="password" style={{width:"100%", padding:"10px"}} value={user.password} onChange={e => {
+                                    const p = e.target.value;
+                                    setStaffAccounts(prev => prev.map(s => s.id === user.id ? {...s, password: p} : s));
+                                    setUser(prev => ({...prev, password: p}));
+                                }} />
+                            </div>
+                        )}
+                    </main>
                 </div>
             );
         }
@@ -135,19 +144,17 @@
         function LoginScreen({ staffAccounts, onLogin }) {
             const [id, setId] = useState("");
             const [pw, setPw] = useState("");
-            const handle = () => {
-                const s = staffAccounts.find(x => x.loginId === id && x.password === pw);
-                if (s) onLogin(s);
-                else alert("IDまたはパスワードが正しくありません");
-            };
             return (
                 <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#e2e8f0" }}>
-                    <div style={{ background: "#fff", padding: 40, borderRadius: 20, width: 300, boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}>
-                        <h2 style={{ textAlign: "center", color: "#2563eb", marginBottom: 30 }}>SHIFT.AI</h2>
-                        <input placeholder="ユーザーID" style={{ width: "100%", marginBottom: 15, padding: 12, borderRadius: 8, border: "1px solid #ddd", boxSizing: "border-box" }} onChange={e => setId(e.target.value)} />
-                        <input placeholder="パスワード" type="password" style={{ width: "100%", marginBottom: 20, padding: 12, borderRadius: 8, border: "1px solid #ddd", boxSizing: "border-box" }} onChange={e => setPw(e.target.value)} />
-                        <button onClick={handle} style={{ width: "100%", padding: 12, background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>ログイン</button>
-                        <div style={{marginTop: 20, fontSize: 10, color: "#999", textAlign: "center"}}>管理者ID: admin / パスワード: password123</div>
+                    <div style={{ background: "#fff", padding: "30px", borderRadius: "15px", width: "280px" }}>
+                        <h2 style={{ textAlign: "center", color: "#2563eb" }}>SHIFT.AI</h2>
+                        <input placeholder="ID" style={{ width: "100%", padding: "10px", marginBottom: "10px" }} onChange={e => setId(e.target.value)} />
+                        <input placeholder="PW" type="password" style={{ width: "100%", padding: "10px", marginBottom: "20px" }} onChange={e => setPw(e.target.value)} />
+                        <button onClick={() => {
+                            const s = staffAccounts.find(x => x.loginId === id && x.password === pw);
+                            if(s) onLogin(s); else alert("ログイン失敗");
+                        }} style={{ width: "100%", padding: "10px", background: "#2563eb", color: "#fff", border: "none", cursor: "pointer" }}>ログイン</button>
+                        <p style={{fontSize:"9px", color:"#999", marginTop:"10px"}}>admin / password123</p>
                     </div>
                 </div>
             );
